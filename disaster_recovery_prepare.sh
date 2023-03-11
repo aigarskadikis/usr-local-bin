@@ -66,8 +66,12 @@ HOSTNAME=$(mysql --database=$DATABASE --silent --skip-column-names --batch --exe
 SELECT hosts.host FROM hosts, items WHERE hosts.hostid=items.hostid AND items.itemid=$ITEMID
 ")
 
+ITEMNAME=$(mysql --database=$DATABASE --silent --skip-column-names --batch --execute="SELECT name FROM items WHERE itemid=$ITEMID")
+
+
 echo $HOSTNAME $ITEMID
 
+echo "# $ITEMNAME" >> "$DEST/$HOSTNAME/restore.sh"
 mysql \
 --database=$DATABASE \
 --silent \

@@ -333,3 +333,34 @@ rclone -vv sync $VOLUME/filesystem BackupFileSystem:filesystem
 
 /usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o $?
 
+# optimize tables
+mysql \
+--database=$DBNAME \
+--silent \
+--skip-column-names \
+--batch \
+--execute="
+SELECT TABLE_NAME
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA=\"$DBNAME\"
+AND TABLE_NAME NOT IN ('history','history_uint')
+ORDER BY DATA_FREE DESC;
+" | \
+while IFS= read -r TABLE_NAME
+do {
+
+echo "mysql $DBNAME -e \"OPTIMIZE TABLE $TABLE_NAME;\""
+
+mysql \
+--database=$DBNAME \
+--silent \
+--skip-column-names \
+--batch \
+--execute="
+SET SESSION SQL_LOG_BIN=0;
+OPTIMIZE TABLE $TABLE_NAME;
+"
+
+} done
+
+

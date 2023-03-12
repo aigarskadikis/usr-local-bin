@@ -228,8 +228,8 @@ mysqldump \
 --single-transaction \
 --create-options \
 --no-data \
---database=$DBNAME > $MYSQLDIR/schema.sql && \
-xz $MYSQLDIR/schema.sql
+--database=$DBNAME > "$MYSQLDIR/schema.sql" && \
+xz "$MYSQLDIR/schema.sql"
 
 if [ ${PIPESTATUS[0]} -ne 0 ]; then
 /usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o 1
@@ -254,9 +254,9 @@ echo "snapshot" && mysqldump \
 --ignore-table=$DBNAME.history_uint \
 --ignore-table=$DBNAME.trends \
 --ignore-table=$DBNAME.trends_uint \
---database=$DBNAME > $MYSQLDIR/snapshot.sql && \
+--database=$DBNAME > "$MYSQLDIR/snapshot.sql" && \
 echo "compressing snapshot" && \
-xz $MYSQLDIR/snapshot.sql
+xz "$MYSQLDIR/snapshot.sql"
 
 # run backup on slave. if this server is not running virtual IP then backup
 ip a | grep "192.168.88.55" || mysqldump --flush-logs \
@@ -268,7 +268,7 @@ ip a | grep "192.168.88.55" || mysqldump --flush-logs \
 --ignore-table=$DBNAME.history_uint \
 --ignore-table=$DBNAME.trends \
 --ignore-table=$DBNAME.trends_uint \
---database=$DBNAME | gzip > snapshot.sql.gz
+--database=$DBNAME | gzip > "$MYSQLDIR/snapshot.sql.gz"
 
 sleep 1
 echo -e "\nData backup including trends, str, log and text"
@@ -280,17 +280,17 @@ mysqldump \
 --no-create-info \
 --ignore-table=$DBNAME.history \
 --ignore-table=$DBNAME.history_uint \
---database=$DBNAME > $MYSQLDIR/data.sql && \
+--database=$DBNAME > "$MYSQLDIR/data.sql" && \
 echo -e "\ncompressing data.sql with xz" && \
-xz $MYSQLDIR/data.sql
+xz "$MYSQLDIR/data.sql"
 
 if [ ${PIPESTATUS[0]} -ne 0 ]; then
 /usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o 2
 echo "mysqldump executed with error !!"
 else
 /usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o 0
-echo content of $MYSQLDIR
-ls -lh $MYSQLDIR
+echo "content of $MYSQLDIR"
+ls -lh "$MYSQLDIR"
 fi
 
 /usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.sql.data.size -o $(ls -s --block-size=1 $MYSQLDIR/data.sql.xz | grep -Eo "^[0-9]+")

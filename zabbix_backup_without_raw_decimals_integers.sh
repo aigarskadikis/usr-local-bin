@@ -18,7 +18,7 @@ DBNAME=zabbix
 DR=/dr
 rm -rf /dr
 
-DEST="$DR/$YEAR/$MONTH/$DAY"
+DEST="$DR"
 
 mkdir -p "$DEST"
 

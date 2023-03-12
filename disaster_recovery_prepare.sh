@@ -8,7 +8,7 @@ MONTH=$(date +%m)
 DAY=$(date +%d)
 CLOCK=$(date +%H%M)
 
-DATABASE=zabbix
+DBNAME=zabbix
 DR=/dr
 rm -rf /dr
 
@@ -19,7 +19,7 @@ mkdir -p "$DEST"
 # seek for all servers which has a DR (disaster recovery tag)
 # this block will create a blank restore.sh which will receive more content in upcomming steps
 mysql \
---database=$DATABASE \
+--database=$DBNAME \
 --silent \
 --skip-column-names \
 --batch \
@@ -44,7 +44,7 @@ echo >> "$DEST/$HOSTNAME/restore.sh"
 
 # unpack all itemids which holds disaster recovery data
 mysql \
---database=$DATABASE \
+--database=$DBNAME \
 --silent \
 --skip-column-names \
 --batch \
@@ -62,18 +62,18 @@ AND applications.name='DR'
 while IFS= read -r ITEMID
 do {
 
-HOSTNAME=$(mysql --database=$DATABASE --silent --skip-column-names --batch --execute="
+HOSTNAME=$(mysql --database=$DBNAME --silent --skip-column-names --batch --execute="
 SELECT hosts.host FROM hosts, items WHERE hosts.hostid=items.hostid AND items.itemid=$ITEMID
 ")
 
-ITEMNAME=$(mysql --database=$DATABASE --silent --skip-column-names --batch --execute="SELECT name FROM items WHERE itemid=$ITEMID")
+ITEMNAME=$(mysql --database=$DBNAME --silent --skip-column-names --batch --execute="SELECT name FROM items WHERE itemid=$ITEMID")
 
 
-echo $HOSTNAME $ITEMID
+echo $HOSTNAME $ITEMID $ITEMNAME
 
 echo "# $ITEMNAME" >> "$DEST/$HOSTNAME/restore.sh"
 mysql \
---database=$DATABASE \
+--database=$DBNAME \
 --silent \
 --raw \
 --skip-column-names \

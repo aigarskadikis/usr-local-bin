@@ -272,7 +272,6 @@ ip a | grep "192.168.88.55" || mysqldump --flush-logs \
 
 sleep 1
 echo -e "\nData backup including trends, str, log and text"
-/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o 2
 mysqldump \
 --set-gtid-purged=OFF \
 --flush-logs \

@@ -275,7 +275,7 @@ zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
 sleep 1
 s=$((s+1))
-echo -e "\nData backup including trends, str, log and text" && \
+echo -e "\nData backup including trends, str, log and text. using fastest compression" && \
 zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
 mysqldump \
 --set-gtid-purged=OFF \
@@ -283,12 +283,16 @@ mysqldump \
 --single-transaction \
 --no-create-info \
 --ignore-table=$DBNAME.history \
---ignore-table=$DBNAME.history_uint $DBNAME > "$MYSQLDIR/data.sql" && \
-echo -e "\ncompressing data.sql with xz" && \
-xz "$MYSQLDIR/data.sql"
+--ignore-table=$DBNAME.history_uint $DBNAME | lz4 > "$MYSQLDIR/data.sql.lz4" 
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o ${PIPESTATUS[0]}
+
+sleep 1
+s=$((s+1))
+echo -e "\nre lz4 data.sql with xz" && \
+unlz4 "$MYSQLDIR/data.sql.lz4" | xz > "$MYSQLDIR/data.sql.xz"
 zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
-/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.sql.data.size -o $(ls -s --block-size=1 $MYSQLDIR/data.sql.xz | grep -Eo "^[0-9]+")
+/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.sql.data.size -o $(ls -s --block-size=1 "$MYSQLDIR/data.sql.xz" | grep -Eo "^[0-9]+")
 
 sleep 1
 s=$((s+1))
@@ -301,7 +305,7 @@ sudo tar -czvf $FILESYSTEM/fs.conf.zabbix.tar.gz \
 $(grep zabbix /etc/passwd|cut -d: -f6)
 zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
-/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.filesystem.size -o $(ls -s --block-size=1 $FILESYSTEM/fs.conf.zabbix.tar.xz | grep -Eo "^[0-9]+")
+/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.filesystem.size -o $(ls -s --block-size=1 "$FILESYSTEM/fs.conf.zabbix.tar.xz" | grep -Eo "^[0-9]+")
 
 # remove older files than 30 DAYs
 echo -e "\nThese files will be deleted:"

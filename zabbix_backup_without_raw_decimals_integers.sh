@@ -22,14 +22,18 @@ DEST="$DR"
 
 mkdir -p "$DEST"
 
+s=0
+
 # seek for all servers which has a DR (disaster recovery tag)
 # this block will create a blank restore.sh which will receive more content in upcomming steps
+s=$((s+1))
+echo -e "\nprepare disaster recovery procedure" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
 mysql \
---database=$DBNAME \
 --silent \
 --skip-column-names \
 --batch \
---execute="
+$DBNAME --execute="
 SELECT DISTINCT hosts.host
 FROM items, hosts, items_applications, applications
 WHERE items_applications.itemid=items.itemid
@@ -46,15 +50,17 @@ mkdir -p "$DEST/$HOSTNAME"
 echo "#!/bin/bash" > "$DEST/$HOSTNAME/restore.sh"
 echo >> "$DEST/$HOSTNAME/restore.sh"
 } done
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
 
-# unpack all itemids which holds disaster recovery data
+s=$((s+1))
+echo -e "\nunpack all itemids which holds disaster recovery data" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
 mysql \
---database=$DBNAME \
 --silent \
 --skip-column-names \
 --batch \
---execute="
+$DBNAME --execute="
 SELECT items.itemid
 FROM items, hosts, items_applications, applications
 WHERE items_applications.itemid=items.itemid
@@ -79,17 +85,17 @@ echo $HOSTNAME $ITEMID $ITEMNAME
 
 echo "# $ITEMNAME" >> "$DEST/$HOSTNAME/restore.sh"
 mysql \
---database=$DBNAME \
 --silent \
 --raw \
 --skip-column-names \
 --batch \
---execute="
+$DBNAME --execute="
 SELECT value FROM history_text WHERE itemid=$ITEMID ORDER BY clock DESC LIMIT 1
 " >> "$DEST/$HOSTNAME/restore.sh"
 echo >> "$DEST/$HOSTNAME/restore.sh"
 
 } done
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
 
 
@@ -101,13 +107,17 @@ if [ ! -d "$FILESYSTEM" ]; then
   mkdir -p "$FILESYSTEM"
 fi
 
-# pack disaster recovery scripts
-sudo tar -czvf $FILESYSTEM/dr.tar.gz /dr
 
-echo -e "\nDelete itemid which do not exist anymore for an INTERNAL event"
-mysql \
---database=$DBNAME \
---execute="
+s=$((s+1))
+echo -e "\npack disaster recovery scripts" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
+sudo tar -czvf $FILESYSTEM/dr.tar.gz /dr
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
+
+s=$((s+1))
+echo -e "\nDelete itemid which do not exist anymore for an INTERNAL event" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
+mysql $DBNAME --execute="
 DELETE 
 FROM events
 WHERE events.source = 3 
@@ -115,11 +125,12 @@ AND events.object = 4
 AND events.objectid NOT IN (
 SELECT itemid FROM items)
 "
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
-echo -e "\nDelete trigger event where triggerid do not exist anymore"
-mysql \
---database=$DBNAME \
---execute="
+s=$((s+1))
+echo -e "\nDelete trigger event where triggerid do not exist anymore" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
+mysql $DBNAME --execute="
 DELETE
 FROM events
 WHERE source = 0
@@ -127,11 +138,12 @@ AND object = 0
 AND objectid NOT IN
 (SELECT triggerid FROM triggers)
 "
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
-echo -e "\nDelete history for items which either are history 0 or disabled or do not keep trends"
-mysql \
---database=$DBNAME \
---execute="
+s=$((s+1))
+echo -e "\nDelete history for items which either are history 0 or disabled or do not keep trends" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
+mysql $DBNAME --execute="
 DELETE FROM trends WHERE itemid IN (SELECT itemid FROM items WHERE value_type=0 AND trends='0' AND flags IN (0,4));
 DELETE FROM trends WHERE itemid IN (SELECT itemid FROM items WHERE value_type=0 AND status=1 AND flags IN (0,4));
 DELETE FROM trends_uint WHERE itemid IN (SELECT itemid FROM items WHERE value_type=3 AND trends='0' AND flags IN (0,4));
@@ -143,14 +155,16 @@ DELETE FROM history_str WHERE itemid IN (SELECT itemid FROM items WHERE value_ty
 DELETE FROM history_log WHERE itemid IN (SELECT itemid FROM items WHERE value_type=2 AND history='0' AND flags IN (0,4));
 DELETE FROM history_log WHERE itemid IN (SELECT itemid FROM items WHERE value_type=2 AND status=1 AND flags IN (0,4));
 "
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
-# Discard unchanged 'history_text' for all item IDs
+s=$((s+1))
+echo -e "\nDiscard unchanged 'history_text' for all item IDs" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
 mysql \
---database=$DBNAME \
 --silent \
 --skip-column-names \
 --batch \
---execute="
+$DBNAME --execute="
 SELECT items.itemid
 FROM items, hosts
 WHERE hosts.hostid=items.hostid
@@ -161,7 +175,6 @@ AND items.flags IN (0,4)
 while IFS= read -r ITEMID
 do {
 echo $ITEMID
-sleep 0.01
 echo "
 DELETE FROM history_text WHERE itemid=$ITEMID AND CLOCK IN (
 SELECT CLOCK from (
@@ -180,15 +193,16 @@ WHERE v2 IS NOT NULL
 )
 " | mysql zabbix
 } done
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
-
-# Discard unchanged 'history_str' for all item IDs
+s=$((s+1))
+echo -e "\nDiscard unchanged 'history_str' for all item IDs" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
 mysql \
---database=$DBNAME \
 --silent \
 --skip-column-names \
 --batch \
---execute="
+$DBNAME --execute="
 SELECT items.itemid
 FROM items, hosts
 WHERE hosts.hostid=items.hostid
@@ -199,7 +213,6 @@ AND items.flags IN (0,4)
 while IFS= read -r ITEMID
 do {
 echo $ITEMID
-sleep 0.01
 echo "
 DELETE FROM history_str WHERE itemid=$ITEMID AND CLOCK IN (
 SELECT CLOCK from (
@@ -216,34 +229,32 @@ where r = 'zero'
 ) x3
 WHERE v2 IS NOT NULL
 )
-" | mysql --database=$DBNAME
+" | mysql $DBNAME
 } done
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
-
-echo -e "\nExtracting schema"
-/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o 1
+s=$((s+1))
+echo -e "\nschema" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
 mysqldump \
 --set-gtid-purged=OFF \
 --flush-logs \
 --single-transaction \
 --create-options \
---no-data \
---database=$DBNAME > "$MYSQLDIR/schema.sql" && \
+--no-data $DBNAME > "$MYSQLDIR/schema.sql"
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
+
+s=$((s+1))
+echo -e "\ncompress" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
 xz "$MYSQLDIR/schema.sql"
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
-if [ ${PIPESTATUS[0]} -ne 0 ]; then
-/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o 1
-echo "mysqldump executed with error !!"
-else
-/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o 0
-echo content of $MYSQLDIR
-ls -lh $MYSQLDIR
-fi
 
-sleep 1
-
-echo -e "\nBackup in one file. Useful to quickly bring back older configuration. while still keeping history"
-echo "snapshot" && mysqldump \
+s=$((s+1))
+echo -e "\nBackup in one file. Useful to quickly bring back older configuration. while still keeping history" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
+mysqldump \
 --set-gtid-purged=OFF \
 --flush-logs \
 --single-transaction \
@@ -253,59 +264,42 @@ echo "snapshot" && mysqldump \
 --ignore-table=$DBNAME.history_text \
 --ignore-table=$DBNAME.history_uint \
 --ignore-table=$DBNAME.trends \
---ignore-table=$DBNAME.trends_uint \
---database=$DBNAME > "$MYSQLDIR/snapshot.sql" && \
-echo "compressing snapshot" && \
-xz "$MYSQLDIR/snapshot.sql"
+--ignore-table=$DBNAME.trends_uint $DBNAME > "$MYSQLDIR/snapshot.sql"
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
-# run backup on slave. if this server is not running virtual IP then backup
-ip a | grep "192.168.88.55" || mysqldump --flush-logs \
---single-transaction \
---ignore-table=$DBNAME.history \
---ignore-table=$DBNAME.history_log \
---ignore-table=$DBNAME.history_str \
---ignore-table=$DBNAME.history_text \
---ignore-table=$DBNAME.history_uint \
---ignore-table=$DBNAME.trends \
---ignore-table=$DBNAME.trends_uint \
---database=$DBNAME | gzip > "$MYSQLDIR/snapshot.sql.gz"
+s=$((s+1))
+echo -e "\ncompressing snapshot" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
+xz "$MYSQLDIR/snapshot.sql"
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
 sleep 1
-echo -e "\nData backup including trends, str, log and text"
+s=$((s+1))
+echo -e "\nData backup including trends, str, log and text" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
 mysqldump \
 --set-gtid-purged=OFF \
 --flush-logs \
 --single-transaction \
 --no-create-info \
 --ignore-table=$DBNAME.history \
---ignore-table=$DBNAME.history_uint \
---database=$DBNAME > "$MYSQLDIR/data.sql" && \
+--ignore-table=$DBNAME.history_uint $DBNAME > "$MYSQLDIR/data.sql" && \
 echo -e "\ncompressing data.sql with xz" && \
 xz "$MYSQLDIR/data.sql"
-
-if [ ${PIPESTATUS[0]} -ne 0 ]; then
-/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o 2
-echo "mysqldump executed with error !!"
-else
-/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o 0
-echo "content of $MYSQLDIR"
-ls -lh "$MYSQLDIR"
-fi
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
 /usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.sql.data.size -o $(ls -s --block-size=1 $MYSQLDIR/data.sql.xz | grep -Eo "^[0-9]+")
 
 sleep 1
+s=$((s+1))
 echo -e "\nArchiving important directories and files"
-/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o 3
-
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
 sudo tar -czvf $FILESYSTEM/fs.conf.zabbix.tar.gz \
 --files-from "/etc/zabbix/backup_zabbix_files.list" \
 --files-from "/etc/zabbix/backup_zabbix_directories.list" \
 /usr/bin/zabbix_* \
-$(grep zabbix /etc/passwd|cut -d: -f6) \
-/var/lib/grafana 
-
-/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o $?
+$(grep zabbix /etc/passwd|cut -d: -f6)
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
 /usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.filesystem.size -o $(ls -s --block-size=1 $FILESYSTEM/fs.conf.zabbix.tar.xz | grep -Eo "^[0-9]+")
 
@@ -320,29 +314,30 @@ find /backup -type d -empty -print
 # delete empty directories
 find /backup -type d -empty -print -delete
 
-echo -e "\nUploading sql backup to google drive"
-/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o 4
+s=$((s+1))
+echo -e "\nUploading sql backup to google drive" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
 rclone -vv sync $VOLUME/mysql BackupMySQL:mysql
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
-/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o $?
-
-echo -e "\nUploading filesystem backup to google drive"
-/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o 5
+s=$((s+1))
+echo -e "\nUploading filesystem backup to google drive" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
 rclone -vv sync $VOLUME/filesystem BackupFileSystem:filesystem
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
-/usr/bin/zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.status -o $?
-
-# optimize tables
+s=$((s+1))
+echo -e "\noptimize tables" && \
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $s
 mysql \
---database=$DBNAME \
 --silent \
 --skip-column-names \
 --batch \
---execute="
+$DBNAME --execute="
 SELECT TABLE_NAME
 FROM INFORMATION_SCHEMA.TABLES
 WHERE TABLE_SCHEMA=\"$DBNAME\"
-AND TABLE_NAME NOT IN ('history','history_uint')
+AND TABLE_NAME NOT IN ('history','history_uint','history_log','history_text','trends','trends_uint')
 ORDER BY DATA_FREE DESC;
 " | \
 while IFS= read -r TABLE_NAME
@@ -351,15 +346,15 @@ do {
 echo "mysql $DBNAME -e \"OPTIMIZE TABLE $TABLE_NAME;\""
 
 mysql \
---database=$DBNAME \
 --silent \
 --skip-column-names \
 --batch \
---execute="
+$DBNAME --execute="
 SET SESSION SQL_LOG_BIN=0;
 OPTIMIZE TABLE $TABLE_NAME;
 "
 
 } done
+zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
 

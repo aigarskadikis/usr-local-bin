@@ -2,7 +2,7 @@
 
 # zabbix server or zabbix proxy for zabbix sender
 contact=127.0.0.1
-HOSTNAME=$(hostname -s).gnt1.lan
+HOSTNAME=zbx.gnt1.el8uek
 
 year=$(date +%Y)
 month=$(date +%m)
@@ -20,6 +20,7 @@ if [ ! -d "$filesystem" ]; then
 fi
 
 echo -e "\nDelete itemid which do not exist anymore for an INTERNAL event"
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 1
 mysql zabbix -e "
 DELETE 
 FROM events
@@ -28,8 +29,11 @@ AND events.object = 4
 AND events.objectid NOT IN (
 SELECT itemid FROM items)
 "
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o $?
+
 
 echo -e "\nDelete trigger event where triggerid do not exist anymore"
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 2
 mysql zabbix -e "
 DELETE
 FROM events
@@ -38,8 +42,10 @@ AND object = 0
 AND objectid NOT IN
 (SELECT triggerid FROM triggers)
 "
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o $?
 
-# Discard unchanged 'history_text' for all item IDs
+echo "Discard unchanged 'history_text' for all item IDs"
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 3
 mysql \
 --database='zabbix' \
 --silent \
@@ -75,9 +81,11 @@ WHERE v2 IS NOT NULL
 )
 " | mysql zabbix
 } done
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o $?
 
 
-# Discard unchanged 'history_str' for all item IDs
+echo "Discard unchanged 'history_str' for all item IDs"
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 4
 mysql \
 --database='zabbix' \
 --silent \
@@ -113,31 +121,27 @@ WHERE v2 IS NOT NULL
 )
 " | mysql zabbix
 } done
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o $?
 
 
 echo -e "\nExtracting schema"
-/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.status -o 1
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 5
 mysqldump \
 --set-gtid-purged=OFF \
 --flush-logs \
 --single-transaction \
 --create-options \
 --no-data \
-zabbix > $mysql/schema.sql && \
+zabbix > $mysql/schema.sql
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o $?
+
+echo -e "\nCompress schema"
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 6
 xz $mysql/schema.sql
-
-if [ ${PIPESTATUS[0]} -ne 0 ]; then
-/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.status -o 1
-echo "mysqldump executed with error !!"
-else
-/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.status -o 0
-echo content of $mysql
-ls -lh $mysql
-fi
-
-sleep 1
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o $?
 
 echo -e "\nBackup in one file. Useful to quickly bring back older configuration. while still keeping history"
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 7
 mysqldump \
 --set-gtid-purged=OFF \
 --flush-logs \
@@ -149,8 +153,13 @@ mysqldump \
 --ignore-table=zabbix.history_uint \
 --ignore-table=zabbix.trends \
 --ignore-table=zabbix.trends_uint \
-zabbix > $mysql/quick.restore.sql && \
+zabbix > $mysql/quick.restore.sql
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o $?
+
+echo -e "\nCompress quick.restore"
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 8
 xz $mysql/quick.restore.sql
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o $?
 
 # run backup on slave. if this server is not running virtual IP then backup
 ip a | grep "192.168.88.55" || mysqldump --flush-logs \
@@ -169,9 +178,8 @@ zabbix | gzip > quick.restore.sql.gz
 # 'pcs resource enable zbx_srv_group' or 'systemctl start zabbix-server'
 
 
-sleep 1
 echo -e "\nData backup except raw metrics"
-/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.status -o 2
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 9
 mysqldump \
 --set-gtid-purged=OFF \
 --flush-logs \
@@ -184,32 +192,35 @@ mysqldump \
 --ignore-table=zabbix.history_uint \
 --ignore-table=zabbix.trends \
 --ignore-table=zabbix.trends_uint \
-zabbix > $mysql/data.sql && \
-xz $mysql/data.sql
+zabbix > $mysql/data.sql 
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o $?
 
-if [ ${PIPESTATUS[0]} -ne 0 ]; then
-/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.status -o 2
-echo "mysqldump executed with error !!"
-else
-/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.status -o 0
-echo content of $mysql
-ls -lh $mysql
-fi
+echo -e "\nCompress data.sql"
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 10
+xz $mysql/data.sql
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o $?
+
+
+#if [ ${PIPESTATUS[0]} -ne 0 ]; then
+#/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 2
+#echo "mysqldump executed with error !!"
+#else
+#/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 0
+#echo content of $mysql
+#ls -lh $mysql
+#fi
 
 /usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.sql.data.size -o $(ls -s --block-size=1 $mysql/data.sql.xz | grep -Eo "^[0-9]+")
 
 sleep 1
 echo -e "\nArchiving important directories and files"
-/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.status -o 3
-
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 11
 sudo tar -czvf $filesystem/fs.conf.zabbix.tar.gz \
 --files-from "/etc/zabbix/backup_zabbix_files.list" \
 --files-from "/etc/zabbix/backup_zabbix_directories.list" \
 /usr/bin/zabbix_* \
-$(grep zabbix /etc/passwd|cut -d: -f6) \
-/var/lib/grafana 
-
-/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.status -o $?
+$(grep zabbix /etc/passwd|cut -d: -f6)
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o $?
 
 /usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.filesystem.size -o $(ls -s --block-size=1 $filesystem/fs.conf.zabbix.tar.xz | grep -Eo "^[0-9]+")
 
@@ -225,14 +236,13 @@ find /backup -type d -empty -print
 find /backup -type d -empty -print -delete
 
 echo -e "\nUploading sql backup to google drive"
-/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.status -o 4
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 12
 rclone -vv sync $volume/mysql BackupMySQL:mysql
-
-/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.status -o $?
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o $?
 
 echo -e "\nUploading filesystem backup to google drive"
-/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.status -o 5
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o 13
 rclone -vv sync $volume/filesystem BackupFileSystem:filesystem
 
-/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.status -o $?
+/usr/bin/zabbix_sender --zabbix-server $contact --host $HOSTNAME -k backup.step -o $?
 

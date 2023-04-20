@@ -82,8 +82,6 @@ pg_dump \
 
 # backup raw data individually
 echo "
-history
-history_uint
 history_str
 history_text
 history_log

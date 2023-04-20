@@ -261,6 +261,7 @@ zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o ${PIPE
 
 zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o "convert lz4 archive to xz"
 unlz4 "$MYSQLDIR/data.sql.lz4" | xz > "$MYSQLDIR/data.sql.xz"
+rm -rf "$MYSQLDIR/data.sql.lz4"
 zabbix_sender --zabbix-server $CONTACT --host $HOSTNAME -k backup.step -o $?
 
 
